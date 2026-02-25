@@ -1,0 +1,23 @@
+# Core
+psycopg2-binary>=2.9.9
+sqlalchemy>=2.0
+
+# Testing
+pytest>=8.0
+pytest-cov>=4.0
+
+# Async & scheduling
+apscheduler>=3.10
+
+# Telegram notifications
+python-telegram-bot>=21.0
+
+# Data
+requests>=2.31
+websockets>=12.0
+
+# Config
+pyyaml>=6.0
+
+# Utilities
+python-dateutil>=2.8

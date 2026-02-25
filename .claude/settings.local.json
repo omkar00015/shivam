@@ -1,0 +1,15 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(dir:*)",
+      "Bash(python:*)",
+      "Bash(pip install:*)",
+      "Bash(python3:*)",
+      "Bash(ls \"C:\\\\Users\\\\Asheesh\\\\Desktop\\\\Downloads\\\\prasad-algo-starter\\\\src\\\\governance\"\" 2>/dev/null && echo \"---\" && cat \"C:UsersAsheeshDesktopDownloadsprasad-algo-startersrcgovernancedrift_detector.py \")",
+      "Bash(ls \"C:\\\\Users\\\\Asheesh\\\\Desktop\\\\Downloads\\\\prasad-algo-starter\\\\tests\\\\integration\"\" 2>&1 && ls \"C:UsersAsheeshDesktopDownloadsprasad-algo-startertests\"\")",
+      "Bash(docker compose up -d)",
+      "Bash(set PYTHONIOENCODING=utf-8)",
+      "Bash(DATABASE_URL=\"postgresql://prasad:your_32_char_password@localhost:5432/trading\" python scripts/live_trader.py)"
+    ]
+  }
+}

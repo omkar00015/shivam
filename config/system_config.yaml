@@ -1,0 +1,73 @@
+# System Configuration — Frozen During Trading (Doc 1 §14)
+# Change requires restart & version increment
+
+version:
+  strategy: "0.1.0"
+  indicator: "0.1.0"
+  rules: "0.1.0"
+
+# Doc 1 §4: Numerical Standards
+precision:
+  epsilon: "1E-9"
+  ratio_decimals: 6
+  atr_decimals: 6
+
+# Doc 2 §7: ATR
+atr:
+  period: 14
+
+# Doc 3: ZLBB
+zlbb:
+  period: 20
+  std_dev_multiplier: "2.0"
+
+# Doc 2 §11: Bandwidth Percentile
+bandwidth:
+  percentile_window: 100
+
+# Doc 4 §6: SR Clustering
+sr:
+  merge_threshold_atr_mult: "0.25"
+  min_gap_price_pct: "0.004"        # 0.40% of price (C7)
+  min_gap_atr_mult: "0.25"          # 0.25 × ATR (C7)
+  frozen_threshold_bars: 100        # P11: bars until FROZEN
+  expired_threshold_bars: 200       # P11: bars until EXPIRED
+  expired_distance_atr_mult: 5      # P11: distance for EXPIRED
+
+# Doc 5: Phase Engine
+phase:
+  scoring_window: 5                 # last 5 completed legs
+  dominance_margin: 10              # Doc 1 §8.2
+  stickiness_consecutive: 2         # M1: consecutive 1H closes needed
+
+# Doc 7: Risk
+risk:
+  account_risk_pct: "0.01"          # 1% per trade
+  max_stop_atr_mult: "1.5"         # Doc 7 §8
+  max_portfolio_risk_pct: "0.06"   # 6% total
+  min_rr_trend: "2.0"             # Doc 7 §6.1
+  min_rr_balance: "1.5"
+
+# Add.C §C4: Position Limits
+portfolio:
+  max_positions: 5
+  max_per_instrument_per_direction: 1
+  max_pyramids: 2
+
+# Doc 10: Governance
+governance:
+  rolling_window_trades: 50
+  expectancy_warning: 0.70
+  expectancy_critical: 0.50
+  drawdown_halt_pct: "0.12"
+  daily_loss_limit_r: 3
+  consecutive_loss_caution: 5
+  consecutive_loss_defensive: 8
+
+# P13: Warmup
+startup:
+  min_bars_per_tf: 60
+
+# P7: Breakout epsilon
+breakout:
+  epsilon_atr_mult: "0.02"

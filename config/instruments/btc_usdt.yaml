@@ -1,0 +1,38 @@
+# BTC/USDT Instrument Profile (Add.C §C7.1)
+
+instrument: BTC_USDT
+exchange: binance
+symbol: BTCUSDT
+type: perpetual
+
+# ZLBB (same as system default)
+zlbb:
+  period: 20
+  std_dev_mult: "2.0"
+
+# SR Zone Width
+sr_zone:
+  min_width: "50"      # $50
+  max_width: "500"     # $500
+  buffer_min: "20"     # $20
+  buffer_max: "150"    # $150
+
+# Position Sizing
+position:
+  max_value_pct: "0.05"  # 5% of account equity
+
+# Order Execution
+orders:
+  preferred_type: LIMIT
+  limit_timeout_bars: 3
+  slippage_tolerance_atr: "0.5"
+
+# Market Hours
+market:
+  continuous: true      # 24/7
+  has_weekend_gaps: false
+
+# Cross-validation (P14)
+cross_validation:
+  epsilon_price_pct: "0.0001"   # 0.01%
+  epsilon_absolute: "1.00"       # $1.00 floor

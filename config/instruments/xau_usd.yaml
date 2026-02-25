@@ -1,0 +1,41 @@
+# Gold (XAU/USD) Instrument Profile (Add.C §C7.2)
+
+instrument: XAU_USD
+exchange: polygon  # or refinitiv — frozen in config
+symbol: XAUUSD
+type: spot
+
+# ZLBB
+zlbb:
+  period: 20
+  std_dev_mult: "2.0"
+
+# SR Zone Width
+sr_zone:
+  min_width: "3"       # $3
+  max_width: "25"      # $25
+  buffer_min: "1"      # $1
+  buffer_max: "8"      # $8
+
+# Position Sizing
+position:
+  max_value_pct: "0.04"  # 4% of account equity
+
+# Order Execution
+orders:
+  preferred_type: LIMIT
+  limit_timeout_bars: 3
+  slippage_tolerance_atr: "0.5"
+
+# Market Hours (C5: Gold gap handling)
+market:
+  continuous: false
+  has_weekend_gaps: true
+  session_start: "22:00 UTC Sunday"
+  session_end: "21:00 UTC Friday"
+  close_positions_before: "20:30 UTC Friday"
+
+# Cross-validation (P14)
+cross_validation:
+  epsilon_price_pct: "0.0001"   # 0.01%
+  epsilon_absolute: "0.10"       # $0.10 floor

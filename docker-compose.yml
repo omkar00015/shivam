@@ -1,0 +1,24 @@
+# Prasad Deterministic Algo Trading System — Docker Services
+# Doc 9: TimescaleDB for bar storage and state persistence
+
+services:
+  timescaledb:
+    image: timescale/timescaledb:latest-pg16
+    container_name: prasad-timescaledb
+    environment:
+      POSTGRES_DB: trading
+      POSTGRES_USER: prasad
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-dev_password_change_me}
+    ports:
+      - "5432:5432"
+    volumes:
+      - tsdb_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U prasad -d trading"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+volumes:
+  tsdb_data:
