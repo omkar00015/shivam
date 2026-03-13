@@ -907,7 +907,7 @@ class Orchestrator:
     ) -> None:
         """Step 12: Save bar, trades, and component snapshots to DB."""
         try:
-            await self._state_mgr.save_bar(bar_15m)
+            await self._state_mgr.save_bar(bar_15m, instrument=ctx.symbol)
 
             for trade in new_trades:
                 await self._state_mgr.save_trade(trade)

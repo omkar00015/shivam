@@ -31,6 +31,8 @@ from typing import Iterator
 import psycopg2
 import psycopg2.extras
 import requests
+from dotenv import load_dotenv
+load_dotenv()
 
 # ---------------------------------------------------------------------------
 # Configuration
@@ -371,7 +373,7 @@ def report_counts() -> None:
         ok    = count >= int(exp * 0.90)   # allow 10% slack for weekends/gaps
         status = "OK" if ok else "LOW"
         all_ok = all_ok and ok
-        print(f"  {tf:>3s}: {count:>8,}  (expected ≈ {exp:>7,})  [{status}]")
+        print(f"  {tf:>3s}: {count:>8,}  (expected ~{exp:>7,})  [{status}]")
 
     cur.close()
     conn.close()

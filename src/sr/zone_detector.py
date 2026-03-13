@@ -88,6 +88,10 @@ _DECAY_BARS = 50  # every 50 TF bars without touch → strength -1
 # Touch bonus cap
 _TOUCH_BONUS_CAP = 3  # max +3 per touch accumulation
 
+# Source bonus caps (Doc 4 §4.2: each source type contributes once)
+_MAX_SOURCE_BONUS_PER_TYPE = 2   # max bonus from any single source type
+_MAX_SOURCE_BONUS_TOTAL = 6      # max total source_bonus (3 types × 2 each)
+
 # Candidate validation (C7)
 _CANDIDATE_REJECTION_NEEDED = 2
 _CANDIDATE_LTF_CANDLES      = 5
@@ -130,6 +134,20 @@ class ZoneState(Enum):
     FLIPPED          = auto()  # polarity inverted after BROKEN_CONFIRMED (C3)
     FROZEN           = auto()  # no touch for FROZEN_BARS (P11)
     EXPIRED          = auto()  # permanently removed (P11)
+
+
+# Lifecycle state priority for clustering template selection (Fix B)
+# Higher = more advanced lifecycle = preferred as merge template
+_LIFECYCLE_PRIORITY: dict[ZoneState, int] = {
+    ZoneState.FLIPPED: 6,
+    ZoneState.BROKEN_CONFIRMED: 5,
+    ZoneState.BREAK_PENDING: 4,
+    ZoneState.TESTED: 3,
+    ZoneState.FRESH: 2,
+    ZoneState.CANDIDATE: 1,
+    ZoneState.FROZEN: 0,
+    ZoneState.EXPIRED: 0,
+}
 
 
 class ZonePolarity(Enum):
@@ -454,6 +472,10 @@ def _finalize_cluster(cluster: list["_ZoneMutable"]) -> "_ZoneMutable":
     Center = displacement-weighted average.
     Strength = sum (base_strength from all members).
     touch_count = sum. frozen_touch_bonus = max (preserve strongest pre-flip bonus).
+
+    Fix B: Template selection prefers advanced lifecycle state (FLIPPED > TESTED > FRESH)
+    via tuple key (lifecycle_priority, total_strength). This ensures a FLIPPED zone
+    is never overwritten by a stronger FRESH zone during clustering.
     """
     if len(cluster) == 1:
         return cluster[0]
@@ -466,12 +488,31 @@ def _finalize_cluster(cluster: list["_ZoneMutable"]) -> "_ZoneMutable":
     else:
         center = sum(z.center * z.displacement for z in cluster) / total_disp
 
-    # Representative zone: take the strongest one as template
-    template = max(cluster, key=lambda z: z.total_strength())
+    # Fix B: Prefer advanced lifecycle state, then strength as tiebreaker
+    template = max(
+        cluster,
+        key=lambda z: (_LIFECYCLE_PRIORITY.get(z.state, 0), z.total_strength()),
+    )
+
+    # Fix B: Defensive guard — carry forward lifecycle fields from most advanced zone
+    most_advanced = max(cluster, key=lambda z: _LIFECYCLE_PRIORITY.get(z.state, 0))
+    if _LIFECYCLE_PRIORITY.get(most_advanced.state, 0) > _LIFECYCLE_PRIORITY.get(template.state, 0):
+        template.state = most_advanced.state
+        template.touch_count = max(template.touch_count, most_advanced.touch_count)
+        template.false_break_count = max(template.false_break_count, most_advanced.false_break_count)
+        template.frozen_touch_bonus = max(template.frozen_touch_bonus, most_advanced.frozen_touch_bonus)
+        template.last_touch_time = most_advanced.last_touch_time or template.last_touch_time
+        template.confirmed_at = most_advanced.confirmed_at or template.confirmed_at
+        template.bars_since_touch = min(template.bars_since_touch, most_advanced.bars_since_touch)
+        template.break_consecutive = most_advanced.break_consecutive
+        template.break_direction = most_advanced.break_direction
+        template.break_window_bars = most_advanced.break_window_bars
+        template.bars_since_confirmed = most_advanced.bars_since_confirmed
+
     template.center = center
     # Merge strength: sum base_strength, accumulate touch counts
     template.base_strength = sum(z.base_strength for z in cluster)
-    template.source_bonus  = sum(z.source_bonus for z in cluster)
+    template.source_bonus  = min(sum(z.source_bonus for z in cluster), _MAX_SOURCE_BONUS_TOTAL)
     template.touch_count   = sum(z.touch_count for z in cluster)
     template.false_break_count = sum(z.false_break_count for z in cluster)
     template.frozen_touch_bonus = max(z.frozen_touch_bonus for z in cluster)
@@ -728,12 +769,16 @@ def _step_fresh_or_tested(
     direction = _is_close_beyond_boundary(bar.close, zone, breakout_epsilon)
     if direction is not None:
         # FRESH/TESTED → BREAK_PENDING (C3, P7)
+        prev_state_name = zone.state.name
         zone.state             = ZoneState.BREAK_PENDING
         zone.break_consecutive  = 1
         zone.inside_consecutive = 0
         zone.break_direction    = direction
         zone.break_window_bars  = 1
-        logger.debug("Zone %s → BREAK_PENDING dir=%s", zone.zone_id, direction)
+        logger.info(
+            "Zone %s %s -> BREAK_PENDING dir=%s center=%s",
+            zone.zone_id, prev_state_name, direction, zone.center,
+        )
         return
 
     # Touch handling (enters zone without breaking)
@@ -773,7 +818,10 @@ def _step_break_pending(
             zone.state                = ZoneState.BROKEN_CONFIRMED
             zone.confirmed_at         = bar.timestamp_start
             zone.bars_since_confirmed = 0
-            logger.debug("Zone %s → BROKEN_CONFIRMED after %d bars", zone.zone_id, zone.break_consecutive)
+            logger.info(
+                "Zone %s BREAK_PENDING -> BROKEN_CONFIRMED (dir=%s, %d consecutive closes) center=%s",
+                zone.zone_id, zone.break_direction, zone.break_consecutive, zone.center,
+            )
         return
 
     # Check if back inside zone (failed break C3)
@@ -825,6 +873,9 @@ def _transition_to_flipped(zone: "_ZoneMutable", bar: AggregatedBar) -> None:
     # P3: freeze pre-flip touch bonus
     zone.frozen_touch_bonus = min(zone.touch_count, _TOUCH_BONUS_CAP)
 
+    # Capture old polarity for logging before inversion
+    old_polarity_name = zone.polarity.name
+
     # Invert polarity
     zone.polarity = (
         ZonePolarity.RESISTANCE
@@ -842,8 +893,10 @@ def _transition_to_flipped(zone: "_ZoneMutable", bar: AggregatedBar) -> None:
     zone.last_touch_time = bar.timestamp_start
     zone.bars_since_touch = 0
     zone.recompute_tier()
-    logger.debug("Zone %s → FLIPPED (polarity=%s frozen_bonus=%d)",
-                 zone.zone_id, zone.polarity.name, zone.frozen_touch_bonus)
+    logger.info(
+        "Zone %s BROKEN_CONFIRMED -> FLIPPED center=%s polarity=%s->%s frozen_bonus=%d",
+        zone.zone_id, zone.center, old_polarity_name, zone.polarity.name, zone.frozen_touch_bonus,
+    )
 
 
 def _apply_decay_and_freeze(
@@ -1266,14 +1319,22 @@ class ZoneDetector:
         timestamp: datetime.datetime,
         native_atr: Decimal,
     ) -> None:
-        """Doc 4 §4.2: Register open/close cluster zone (+2 strength)."""
+        """Doc 4 §4.2: Register open/close cluster zone (+2 strength).
+
+        Fix A: source_bonus capped at _MAX_SOURCE_BONUS_TOTAL (6) to prevent
+        unbounded accumulation from repeated cluster detections on each bar.
+        """
         # Check if a zone already exists nearby (within 0.15×ATR)
         proximity = _CLUSTER_OC_ATR_MULT * native_atr
         for z in self._zones:
             if abs(z.center - center) <= proximity + _EPSILON and z.polarity == polarity:
-                z.source_bonus += int(_OPEN_CLOSE_BONUS)
-                z.recompute_tier()
-                return  # Augment existing zone
+                if z.source_bonus < _MAX_SOURCE_BONUS_TOTAL:
+                    z.source_bonus = min(
+                        z.source_bonus + int(_OPEN_CLOSE_BONUS),
+                        _MAX_SOURCE_BONUS_TOTAL,
+                    )
+                    z.recompute_tier()
+                return  # Augment existing zone (or skip if already capped)
 
         zone = _ZoneMutable(
             zone_id=_make_zone_id(center, polarity, self._sr_tf, timestamp),
@@ -1300,13 +1361,20 @@ class ZoneDetector:
         timestamp: datetime.datetime,
         native_atr: Decimal,
     ) -> None:
-        """Doc 4 §4.3: Register rejection bar zone (+2 strength)."""
+        """Doc 4 §4.3: Register rejection bar zone (+2 strength).
+
+        Fix A: source_bonus capped at _MAX_SOURCE_BONUS_TOTAL (6).
+        """
         proximity = _CLUSTER_OC_ATR_MULT * native_atr
         for z in self._zones:
             if abs(z.center - center) <= proximity + _EPSILON and z.polarity == polarity:
-                z.source_bonus += int(_REJECTION_BONUS)
-                z.recompute_tier()
-                return  # Augment
+                if z.source_bonus < _MAX_SOURCE_BONUS_TOTAL:
+                    z.source_bonus = min(
+                        z.source_bonus + int(_REJECTION_BONUS),
+                        _MAX_SOURCE_BONUS_TOTAL,
+                    )
+                    z.recompute_tier()
+                return  # Augment (or skip if already capped)
 
         zone = _ZoneMutable(
             zone_id=_make_zone_id(center, polarity, self._sr_tf, timestamp),
