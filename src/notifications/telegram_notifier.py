@@ -342,6 +342,44 @@ class TelegramNotifier:
         text = f"✅ <b>INSTRUMENT RESUMED — {instrument}</b>"
         return await self._send(text)
 
+    async def send_phase_standby(
+        self,
+        instrument: str,
+        phase_name: str,
+        phase_confidence: Decimal,
+        eligible_setup: str,
+        eligible_zone_count: int,
+        total_zone_count: int,
+        zone_state_summary: str,
+    ) -> bool:
+        """Doc 5 §16: Notify operator that system is in a low-signal phase,
+        standing aside correctly. Sent every ~4 hours to distinguish
+        'system working, no setups' from 'system broken'.
+        """
+        text = (
+            f"📊 <b>STANDBY — {instrument}</b>\n"
+            f"Phase: <b>{phase_name}</b> ({_fmt_pct(phase_confidence)} conf)\n"
+            f"\n"
+            f"<b>Only valid setup:</b> {eligible_setup}\n"
+            f"<b>Eligible zones:</b> {eligible_zone_count} / {total_zone_count}\n"
+            f"<b>Zone states:</b> {zone_state_summary}\n"
+            f"\n"
+            f"<i>System is working correctly. Waiting for eligible zone + price action.</i>"
+        )
+        return await self._send(text)
+
+    # ------------------------------------------------------------------
+    # Generic message (for ad-hoc notifications)
+    # ------------------------------------------------------------------
+
+    async def send_message(self, text: str) -> bool:
+        """Send an arbitrary plain-text notification via Telegram.
+
+        Text is sent as-is (HTML parse mode). Caller is responsible for
+        keeping the message under Telegram's 4096-char limit.
+        """
+        return await self._send(text)
+
     # ------------------------------------------------------------------
     # Internal send machinery
     # ------------------------------------------------------------------

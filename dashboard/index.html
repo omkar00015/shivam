@@ -1,0 +1,1028 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Prasad Trading Dashboard</title>
+  <script src="https://unpkg.com/lightweight-charts@4.2.0/dist/lightweight-charts.standalone.production.js"></script>
+  <style>
+    /* ------------------------------------------------------------------ */
+    /* Reset & base                                                         */
+    /* ------------------------------------------------------------------ */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:         #0d1117;
+      --card:       #161b22;
+      --border:     #30363d;
+      --border2:    #21262d;
+      --text:       #e6edf3;
+      --muted:      #8b949e;
+      --dim:        #484f58;
+
+      /* Phase colours */
+      --c-bull:   #00ff88;
+      --c-bear:   #ff4444;
+      --c-bal:    #4488ff;
+      --c-dist:   #ff8800;
+      --c-acc:    #aa44ff;
+
+      /* Tier colours */
+      --c-s:  #ffd700;
+      --c-a:  #4488ff;
+      --c-b:  #888888;
+      --c-c:  #484f58;
+    }
+
+    html, body {
+      height: 100%;
+      background: var(--bg);
+      color: var(--text);
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      font-size: 13px;
+      overflow: hidden;
+    }
+
+    /* ------------------------------------------------------------------ */
+    /* Layout                                                               */
+    /* ------------------------------------------------------------------ */
+    .root {
+      display: grid;
+      grid-template-rows: 48px 1fr;
+      grid-template-columns: 1fr;
+      height: 100vh;
+    }
+
+    /* Header */
+    .header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 20px;
+      background: var(--card);
+      border-bottom: 1px solid var(--border);
+      grid-row: 1;
+    }
+
+    .logo {
+      font-family: monospace;
+      font-size: 17px;
+      font-weight: 700;
+      letter-spacing: 4px;
+    }
+    .logo-accent { color: var(--c-bull); }
+    .logo-sub {
+      font-size: 10px;
+      font-weight: 400;
+      letter-spacing: 1px;
+      color: var(--muted);
+      margin-left: 10px;
+    }
+
+    .header-right {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+    }
+
+    .cycle-ctr {
+      font-family: monospace;
+      font-size: 11px;
+      color: var(--c-bal);
+    }
+
+    .ts-label {
+      font-family: monospace;
+      font-size: 11px;
+      color: var(--muted);
+    }
+
+    .pill {
+      padding: 3px 11px;
+      border-radius: 20px;
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 1px;
+      transition: background 0.3s, color 0.3s, border-color 0.3s;
+    }
+    .pill-live   { background: #00ff8815; color: var(--c-bull); border: 1px solid #00ff8840; }
+    .pill-paused { background: #ff444415; color: var(--c-bear); border: 1px solid #ff444440; }
+
+    /* Body split */
+    .body {
+      display: grid;
+      grid-template-columns: 70% 30%;
+      grid-row: 2;
+      min-height: 0;
+      overflow: hidden;
+    }
+
+    /* Left column */
+    .left {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      padding: 10px;
+      min-height: 0;
+      border-right: 1px solid var(--border);
+      overflow: hidden;
+    }
+
+    /* Right column */
+    .right {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      padding: 10px;
+      overflow-y: auto;
+      overflow-x: hidden;
+    }
+
+    /* ------------------------------------------------------------------ */
+    /* Cards                                                                */
+    /* ------------------------------------------------------------------ */
+    .card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 10px 12px;
+      transition: border-color 0.4s ease, box-shadow 0.4s ease;
+    }
+
+    .card.flash {
+      border-color: #00ff8850;
+      box-shadow: 0 0 10px #00ff8818;
+    }
+
+    .card-title {
+      font-size: 10px;
+      font-weight: 600;
+      letter-spacing: 1.5px;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin-bottom: 8px;
+    }
+
+    /* ------------------------------------------------------------------ */
+    /* Chart                                                                */
+    /* ------------------------------------------------------------------ */
+    .chart-card {
+      flex: 1;
+      min-height: 0;
+      padding: 0;
+      overflow: hidden;
+      position: relative;
+    }
+
+    #chart {
+      width: 100%;
+      height: 100%;
+    }
+
+    #zone-canvas {
+      position: absolute;
+      top: 0;
+      left: 0;
+      pointer-events: none;
+      z-index: 10;
+    }
+
+    #chart-legend {
+      position: absolute;
+      bottom: 28px;
+      left: 8px;
+      z-index: 20;
+      font-size: 10px;
+      font-family: monospace;
+      color: #8b949e;
+      pointer-events: none;
+      background: #161b22bb;
+      padding: 3px 8px;
+      border-radius: 4px;
+      line-height: 1.8;
+    }
+
+    /* ------------------------------------------------------------------ */
+    /* Phase score bars                                                     */
+    /* ------------------------------------------------------------------ */
+    .phase-rows {
+      display: flex;
+      flex-direction: column;
+      gap: 5px;
+    }
+
+    .phase-row {
+      display: grid;
+      grid-template-columns: 118px 1fr 36px;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .phase-row-label {
+      font-family: monospace;
+      font-size: 11px;
+      color: var(--muted);
+      white-space: nowrap;
+    }
+
+    .phase-row-label.is-active {
+      color: var(--phase-clr);
+      font-weight: 700;
+    }
+
+    .bar-track {
+      height: 7px;
+      background: var(--border2);
+      border-radius: 4px;
+      overflow: hidden;
+    }
+
+    .bar-fill {
+      height: 100%;
+      border-radius: 4px;
+      transition: width 0.4s ease, background 0.4s ease;
+    }
+
+    .bar-score {
+      font-family: monospace;
+      font-size: 11px;
+      color: var(--muted);
+      text-align: right;
+    }
+
+    /* ------------------------------------------------------------------ */
+    /* Phase card (right)                                                   */
+    /* ------------------------------------------------------------------ */
+    .phase-card-inner {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .phase-big-name {
+      font-family: monospace;
+      font-size: 20px;
+      font-weight: 700;
+      letter-spacing: 1px;
+      text-align: center;
+      transition: color 0.4s ease;
+    }
+
+    /* Circular confidence ring */
+    .ring-wrap {
+      position: relative;
+      width: 80px;
+      height: 80px;
+    }
+
+    .ring-wrap svg { transform: rotate(-90deg); }
+
+    .ring-track {
+      fill: none;
+      stroke: var(--border2);
+      stroke-width: 7;
+    }
+
+    .ring-fill {
+      fill: none;
+      stroke-width: 7;
+      stroke-linecap: round;
+      stroke-dasharray: 201.06;   /* 2π × 32 */
+      stroke-dashoffset: 201.06;
+      transition: stroke-dashoffset 0.5s ease, stroke 0.4s ease;
+    }
+
+    .ring-value {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      font-family: monospace;
+      font-size: 15px;
+      font-weight: 700;
+      transition: color 0.4s ease;
+    }
+
+    .step-badge {
+      display: inline-block;
+      padding: 2px 10px;
+      border-radius: 4px;
+      font-family: monospace;
+      font-size: 11px;
+      background: var(--border2);
+      color: var(--muted);
+    }
+
+    /* ------------------------------------------------------------------ */
+    /* Tables                                                               */
+    /* ------------------------------------------------------------------ */
+    table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+
+    th {
+      font-size: 9px;
+      font-weight: 600;
+      letter-spacing: 0.5px;
+      text-transform: uppercase;
+      color: var(--muted);
+      padding: 3px 5px 5px;
+      text-align: left;
+      border-bottom: 1px solid var(--border);
+    }
+
+    td {
+      padding: 5px 5px;
+      font-family: monospace;
+      font-size: 11px;
+      color: #c9d1d9;
+      border-bottom: 1px solid var(--border2);
+      white-space: nowrap;
+    }
+
+    tr:last-child td { border-bottom: none; }
+
+    .empty-row td {
+      text-align: center;
+      color: var(--dim);
+      font-family: system-ui;
+      font-size: 12px;
+      padding: 14px 5px;
+    }
+
+    /* Direction badges */
+    .b { display: inline-block; padding: 1px 6px; border-radius: 3px; font-size: 10px; font-weight: 700; letter-spacing: 0.5px; }
+    .b-long  { background: #00ff8818; color: var(--c-bull); }
+    .b-short { background: #ff444418; color: var(--c-bear); }
+
+    /* Tier */
+    .t-S { color: var(--c-s); font-weight: 700; }
+    .t-A { color: var(--c-a); }
+    .t-B { color: var(--c-b); }
+    .t-C { color: var(--c-c); }
+
+    /* Polarity */
+    .p-sup { color: var(--c-bull); }
+    .p-res { color: var(--c-bear); }
+
+    /* Zone state */
+    .s-FRESH             { color: var(--c-bull); }
+    .s-TESTED            { color: var(--c-bal);  }
+    .s-BREAK_PENDING     { color: var(--c-dist); }
+    .s-BROKEN_CONFIRMED  { color: var(--c-bear); }
+    .s-FLIPPED           { color: var(--c-acc);  }
+
+    /* Scrollbar */
+    ::-webkit-scrollbar { width: 4px; }
+    ::-webkit-scrollbar-track { background: var(--bg); }
+    ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+    ::-webkit-scrollbar-thumb:hover { background: var(--muted); }
+  </style>
+</head>
+
+<body>
+<div class="root">
+
+  <!-- ============================================================ HEADER -->
+  <header class="header">
+    <div>
+      <span class="logo">PRA<span class="logo-accent">S</span>AD</span>
+      <span class="logo-sub">BTC/USDT · PAPER</span>
+    </div>
+    <div class="header-right">
+      <span class="cycle-ctr" id="cycle-ctr">Cycle #0</span>
+      <span class="ts-label"  id="ts-label">—</span>
+      <span class="pill pill-live" id="status-pill">LIVE</span>
+    </div>
+  </header>
+
+  <!-- ============================================================ BODY -->
+  <div class="body">
+
+    <!-- ================================================ LEFT COLUMN -->
+    <div class="left">
+
+      <!-- Candlestick chart ----------------------------------------- -->
+      <div class="card chart-card" id="chart-card">
+        <div id="chart"></div>
+        <canvas id="zone-canvas"></canvas>
+        <div id="chart-legend">
+          <span style="color:#00ff8855">&#9646;</span> Support &nbsp;
+          <span style="color:#ff444455">&#9646;</span> Resistance &nbsp;
+          <span style="color:#00ff88">&#9679;</span> Bull leg &nbsp;
+          <span style="color:#ff4444">&#9679;</span> Bear leg
+        </div>
+      </div>
+
+      <!-- Phase score bars ------------------------------------------ -->
+      <div class="card" id="bars-card">
+        <div class="card-title">Phase Scores</div>
+        <div class="phase-rows" id="phase-rows">
+          <!-- injected by renderPhaseBars() -->
+        </div>
+      </div>
+
+    </div><!-- /left -->
+
+    <!-- =============================================== RIGHT COLUMN -->
+    <div class="right">
+
+      <!-- Phase card ------------------------------------------------ -->
+      <div class="card" id="phase-card">
+        <div class="card-title">Market Phase</div>
+        <div class="phase-card-inner">
+          <div class="phase-big-name" id="phase-name">UNKNOWN</div>
+          <div class="ring-wrap">
+            <svg viewBox="0 0 80 80" width="80" height="80">
+              <circle class="ring-track" cx="40" cy="40" r="32"/>
+              <circle class="ring-fill"  cx="40" cy="40" r="32" id="ring-fill"/>
+            </svg>
+            <div class="ring-value" id="ring-val">0%</div>
+          </div>
+          <div class="step-badge" id="step-badge">Step —</div>
+        </div>
+      </div>
+
+      <!-- Active candidates ----------------------------------------- -->
+      <div class="card" id="cand-card">
+        <div class="card-title">
+          Active Candidates &nbsp;<span id="cand-cnt" style="color:var(--text)">0</span>
+        </div>
+        <table>
+          <thead>
+            <tr>
+              <th>Setup</th>
+              <th>Dir</th>
+              <th>Entry</th>
+              <th>Stop</th>
+              <th>R</th>
+            </tr>
+          </thead>
+          <tbody id="cand-body">
+            <tr class="empty-row"><td colspan="5">No active candidates</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <!-- Open trades ----------------------------------------------- -->
+      <div class="card" id="trades-card">
+        <div class="card-title">
+          Open Trades &nbsp;<span id="trades-cnt" style="color:var(--text)">0</span>
+        </div>
+        <table>
+          <thead>
+            <tr>
+              <th>Inst</th>
+              <th>Dir</th>
+              <th>Entry</th>
+              <th>Stop</th>
+            </tr>
+          </thead>
+          <tbody id="trades-body">
+            <tr class="empty-row"><td colspan="4">No open trades</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <!-- SR Zones -------------------------------------------------- -->
+      <div class="card" id="zones-card">
+        <div class="card-title">
+          SR Zones &nbsp;<span id="zones-cnt" style="color:var(--text)">0</span>
+        </div>
+        <table>
+          <thead>
+            <tr>
+              <th>Tier</th>
+              <th>Pol</th>
+              <th>Center</th>
+              <th>State</th>
+              <th>Str</th>
+              <th>TF</th>
+            </tr>
+          </thead>
+          <tbody id="zones-body">
+            <tr class="empty-row"><td colspan="6">No zones</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+    </div><!-- /right -->
+  </div><!-- /body -->
+</div><!-- /root -->
+
+<script>
+'use strict';
+
+// =========================================================================
+// Config
+// =========================================================================
+const API_BASE  = '';          // same-origin
+const POLL_MS   = 15_000;
+
+const PHASE_CLR = {
+  TREND_BULL:   '#00ff88',
+  TREND_BEAR:   '#ff4444',
+  BALANCE:      '#4488ff',
+  DISTRIBUTION: '#ff8800',
+  ACCUMULATION: '#aa44ff',
+  UNKNOWN:      '#8b949e',
+};
+
+const TIER_CLR = { S:'#ffd700', A:'#4488ff', B:'#888888', C:'#484f58' };
+
+// =========================================================================
+// TradingView chart setup
+// =========================================================================
+const chartEl = document.getElementById('chart');
+
+const chart = LightweightCharts.createChart(chartEl, {
+  layout: {
+    background:  { color: '#161b22' },
+    textColor:   '#8b949e',
+  },
+  grid: {
+    vertLines: { color: '#21262d' },
+    horzLines: { color: '#21262d' },
+  },
+  crosshair: {
+    vertLine: { color: '#48505555', labelBackgroundColor: '#21262d' },
+    horzLine: { color: '#48505555', labelBackgroundColor: '#21262d' },
+  },
+  timeScale: {
+    borderColor:     '#30363d',
+    timeVisible:     true,
+    secondsVisible:  false,
+  },
+  rightPriceScale: { borderColor: '#30363d' },
+  width:  chartEl.clientWidth  || 800,
+  height: chartEl.clientHeight || 460,
+});
+
+// Resize on container resize — also sync the canvas overlay
+const ro = new ResizeObserver(entries => {
+  for (const e of entries) {
+    const r = e.contentRect;
+    if (r.width > 0 && r.height > 0) {
+      chart.resize(r.width, r.height);
+      const cv = document.getElementById('zone-canvas');
+      if (cv) { cv.width = r.width; cv.height = r.height; }
+      redrawCanvas();
+    }
+  }
+});
+ro.observe(chartEl.parentElement);
+
+// Redraw canvas overlay whenever chart scrolls, zooms, or crosshair moves
+chart.timeScale().subscribeVisibleTimeRangeChange(() => redrawCanvas());
+chart.subscribeCrosshairMove(() => redrawCanvas());
+
+// Candlestick series
+const candleSeries = chart.addCandlestickSeries({
+  upColor:        '#00ff88',
+  downColor:      '#ff4444',
+  borderUpColor:  '#00ff88',
+  borderDownColor:'#ff4444',
+  wickUpColor:    '#00ff88',
+  wickDownColor:  '#ff4444',
+});
+
+// ZLEMA — solid white line
+const zlemaLine = chart.addLineSeries({
+  color:                '#ffffff66',
+  lineWidth:            1,
+  lineStyle:            0,   // Solid
+  priceLineVisible:     false,
+  lastValueVisible:     false,
+  crosshairMarkerVisible: false,
+});
+
+// Upper band — dashed red
+const upperLine = chart.addLineSeries({
+  color:                '#ff444477',
+  lineWidth:            1,
+  lineStyle:            2,   // Dashed
+  priceLineVisible:     false,
+  lastValueVisible:     false,
+  crosshairMarkerVisible: false,
+});
+
+// Lower band — dashed green
+const lowerLine = chart.addLineSeries({
+  color:                '#00ff8877',
+  lineWidth:            1,
+  lineStyle:            2,   // Dashed
+  priceLineVisible:     false,
+  lastValueVisible:     false,
+  crosshairMarkerVisible: false,
+});
+
+// Price-line registry: zone_id:hi / zone_id:lo → priceLine object
+const srLines = {};
+
+let firstLoad    = true;
+let currentZones = [];
+let currentLegs  = [];
+
+// =========================================================================
+// Helpers
+// =========================================================================
+
+/** Convert ISO string or epoch ms to Unix seconds (TV chart format). */
+function toSec(ts) {
+  if (typeof ts === 'number') return ts > 1e10 ? Math.floor(ts / 1000) : ts;
+  return Math.floor(new Date(ts).getTime() / 1000);
+}
+
+/** Format a price string/number as a compact number with commas. */
+function fmtPrice(p) {
+  const n = parseFloat(p);
+  if (isNaN(n)) return '—';
+  return n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+/** Flash a card's border green briefly. */
+function flash(id) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.classList.add('flash');
+  setTimeout(() => el.classList.remove('flash'), 800);
+}
+
+// =========================================================================
+// Chart rendering
+// =========================================================================
+
+function renderCandles(bars) {
+  if (!bars || bars.length === 0) return;
+
+  const data = bars.map(b => ({
+    time:  toSec(b.timestamp_start),
+    open:  parseFloat(b.open),
+    high:  parseFloat(b.high),
+    low:   parseFloat(b.low),
+    close: parseFloat(b.close),
+  })).filter(b => !isNaN(b.open));
+
+  data.sort((a, b) => a.time - b.time);
+
+  // Deduplicate by time (keep last)
+  const seen = new Map();
+  for (const d of data) seen.set(d.time, d);
+  const deduped = [...seen.values()].sort((a, b) => a.time - b.time);
+
+  candleSeries.setData(deduped);
+
+  if (firstLoad && deduped.length > 0) {
+    chart.timeScale().fitContent();
+    firstLoad = false;
+  } else if (!firstLoad) {
+    chart.timeScale().scrollToRealTime();
+  }
+}
+
+function renderBandLines(bars, zlbb) {
+  // ZLBB: draw as horizontal lines spanning the visible bar range.
+  // We only have the CURRENT value (not per-bar history), so they appear
+  // as flat reference lines — still useful for seeing where price sits
+  // relative to the bands.
+  if (!zlbb || !bars || bars.length < 2) return;
+
+  const zlemaVal  = parseFloat(zlbb.zlema);
+  const upperVal  = parseFloat(zlbb.upper_band);
+  const lowerVal  = parseFloat(zlbb.lower_band);
+  if (isNaN(zlemaVal) || isNaN(upperVal) || isNaN(lowerVal)) return;
+
+  const t0 = toSec(bars[0].timestamp_start);
+  const t1 = toSec(bars[bars.length - 1].timestamp_start);
+
+  zlemaLine.setData([{ time: t0, value: zlemaVal }, { time: t1, value: zlemaVal }]);
+  upperLine.setData([{ time: t0, value: upperVal  }, { time: t1, value: upperVal  }]);
+  lowerLine.setData([{ time: t0, value: lowerVal  }, { time: t1, value: lowerVal  }]);
+}
+
+function renderSRPriceLines(zones) {
+  // Build the full set of keys we expect: one :hi and one :lo per zone
+  const newKeys = new Set();
+  for (const z of (zones || [])) {
+    newKeys.add(z.zone_id + ':hi');
+    newKeys.add(z.zone_id + ':lo');
+  }
+
+  // Remove stale lines
+  for (const key of Object.keys(srLines)) {
+    if (!newKeys.has(key)) {
+      try { candleSeries.removePriceLine(srLines[key]); } catch (_) {}
+      delete srLines[key];
+    }
+  }
+
+  // Create new lines (two per zone — zone_high and zone_low)
+  for (const z of (zones || [])) {
+    const clr   = (TIER_CLR[z.tier] || '#888') + 'bb';
+    const hiKey = z.zone_id + ':hi';
+    const loKey = z.zone_id + ':lo';
+
+    if (!srLines[hiKey]) {
+      srLines[hiKey] = candleSeries.createPriceLine({
+        price:            parseFloat(z.zone_high),
+        color:            clr,
+        lineWidth:        1,
+        lineStyle:        2,   // Dashed
+        axisLabelVisible: false,
+        title:            '',
+      });
+    }
+    if (!srLines[loKey]) {
+      srLines[loKey] = candleSeries.createPriceLine({
+        price:            parseFloat(z.zone_low),
+        color:            clr,
+        lineWidth:        1,
+        lineStyle:        2,   // Dashed
+        axisLabelVisible: true,
+        title:            `${z.tier} ${z.polarity[0]}`,
+      });
+    }
+  }
+}
+
+// =========================================================================
+// UI panel rendering
+// =========================================================================
+
+function renderHeader(state) {
+  document.getElementById('cycle-ctr').textContent = `Cycle #${state.cycle_count ?? 0}`;
+
+  if (state.last_update) {
+    try {
+      const d = new Date(state.last_update);
+      // Show HH:MM:SS UTC
+      document.getElementById('ts-label').textContent =
+        d.toISOString().substring(11, 19) + ' UTC';
+    } catch (_) {}
+  }
+
+  const paused = !!state.system_paused;
+  const pill = document.getElementById('status-pill');
+  pill.textContent  = paused ? 'PAUSED' : 'LIVE';
+  pill.className    = paused ? 'pill pill-paused' : 'pill pill-live';
+}
+
+function renderPhaseCard(state) {
+  const phase = state.phase || 'UNKNOWN';
+  const conf  = Math.round((state.phase_confidence ?? 0) * 100);
+  const clr   = PHASE_CLR[phase] || '#8b949e';
+  const step  = state.step_reached ?? 0;
+
+  document.getElementById('phase-name').textContent  = phase.replace(/_/g, ' ');
+  document.getElementById('phase-name').style.color  = clr;
+  document.getElementById('ring-val').textContent    = conf + '%';
+  document.getElementById('ring-val').style.color    = clr;
+  document.getElementById('step-badge').textContent  = `Step ${step} / 13`;
+
+  // Circular ring: r=32, circumference = 2π×32 ≈ 201.06
+  const offset = 201.06 * (1 - conf / 100);
+  const ring = document.getElementById('ring-fill');
+  ring.style.strokeDashoffset = offset.toFixed(2);
+  ring.style.stroke           = clr;
+}
+
+function renderPhaseBars(state) {
+  const scores  = state.all_scores || {};
+  const current = state.phase || 'UNKNOWN';
+  const phases  = ['TREND_BULL','TREND_BEAR','BALANCE','DISTRIBUTION','ACCUMULATION'];
+  const labels  = ['TREND BULL','TREND BEAR','BALANCE','DISTRIBUTION','ACCUMULATION'];
+
+  const html = phases.map((p, i) => {
+    const score    = scores[p] ?? 0;
+    const clr      = PHASE_CLR[p];
+    const isActive = p === current;
+    const barBg    = isActive ? clr : clr + '44';
+    const lblCls   = isActive ? 'phase-row-label is-active' : 'phase-row-label';
+    return `
+      <div class="phase-row" style="--phase-clr:${clr}">
+        <div class="${lblCls}">${labels[i]}</div>
+        <div class="bar-track">
+          <div class="bar-fill" style="width:${score}%; background:${barBg}"></div>
+        </div>
+        <div class="bar-score">${score}</div>
+      </div>`;
+  }).join('');
+
+  document.getElementById('phase-rows').innerHTML = html;
+}
+
+function renderCandidates(state) {
+  const detail = state.candidates_detail || [];
+  const count  = detail.length || state.active_candidates || 0;
+  document.getElementById('cand-cnt').textContent = count;
+
+  const tbody = document.getElementById('cand-body');
+  if (detail.length === 0) {
+    tbody.innerHTML = count > 0
+      ? `<tr class="empty-row"><td colspan="5">${count} pending (detail loading…)</td></tr>`
+      : `<tr class="empty-row"><td colspan="5">No active candidates</td></tr>`;
+    return;
+  }
+
+  tbody.innerHTML = detail.map(c => {
+    const dirCls = c.direction === 'LONG' ? 'b b-long' : 'b b-short';
+    const setup  = (c.setup_type || '').replace('_', ' ');
+    return `<tr>
+      <td>${setup}</td>
+      <td><span class="${dirCls}">${c.direction}</span></td>
+      <td>${fmtPrice(c.entry_price)}</td>
+      <td>${fmtPrice(c.stop_price)}</td>
+      <td>${parseFloat(c.expected_R || 0).toFixed(2)}R</td>
+    </tr>`;
+  }).join('');
+}
+
+function renderTrades(state) {
+  const count = state.open_trades || 0;
+  document.getElementById('trades-cnt').textContent = count;
+
+  const tbody = document.getElementById('trades-body');
+  if (count === 0) {
+    tbody.innerHTML = '<tr class="empty-row"><td colspan="4">No open trades</td></tr>';
+  } else {
+    tbody.innerHTML = `<tr class="empty-row"><td colspan="4">${count} trade(s) open</td></tr>`;
+  }
+}
+
+function renderZones(zones) {
+  document.getElementById('zones-cnt').textContent = (zones || []).length;
+  const tbody = document.getElementById('zones-body');
+
+  if (!zones || zones.length === 0) {
+    tbody.innerHTML = '<tr class="empty-row"><td colspan="6">No zones</td></tr>';
+    return;
+  }
+
+  tbody.innerHTML = zones.slice(0, 18).map(z => {
+    const tierCls  = `t-${z.tier}`;
+    const polLabel = z.polarity === 'SUPPORT' ? '<span class="p-sup">Sup</span>' : '<span class="p-res">Res</span>';
+    // Show only first word of state (e.g. BREAK_PENDING → BREAK)
+    const stateKey = (z.state || '').split('_')[0];
+    const stateCls = `s-${z.state || ''}`;
+
+    return `<tr>
+      <td><span class="${tierCls}">${z.tier}</span></td>
+      <td>${polLabel}</td>
+      <td>${fmtPrice(z.center)}</td>
+      <td><span class="${stateCls}">${stateKey}</span></td>
+      <td>${z.strength}</td>
+      <td style="color:var(--muted)">${z.timeframe}</td>
+    </tr>`;
+  }).join('');
+}
+
+// =========================================================================
+// Canvas overlay — SR zone rectangles + leg markers
+// =========================================================================
+
+function redrawCanvas() {
+    const canvas = document.getElementById('zone-canvas');
+    if (!canvas || !chart || !candleSeries) return;
+
+    // CRITICAL: canvas pixel dimensions must match container exactly.
+    // Self-healing resize avoids mismatches from late ResizeObserver fires.
+    const container = document.getElementById('chart-card');
+    if (!container) return;
+    const w = container.offsetWidth;
+    const h = container.offsetHeight;
+    if (w === 0 || h === 0) return;
+    if (canvas.width !== w || canvas.height !== h) {
+        canvas.width  = w;
+        canvas.height = h;
+    }
+
+    const ctx = canvas.getContext('2d');
+    ctx.clearRect(0, 0, w, h);
+
+    // Draw SR zone fills
+    (currentZones || []).forEach(zone => {
+        const yHigh = chart.priceScale('right').priceToCoordinate(parseFloat(zone.zone_high));
+        const yLow  = chart.priceScale('right').priceToCoordinate(parseFloat(zone.zone_low));
+        if (yHigh == null || yLow == null) return;
+
+        const top    = Math.min(yHigh, yLow);
+        const bottom = Math.max(yHigh, yLow);
+        const height = bottom - top;
+        if (height < 1) return;
+
+        ctx.fillStyle = zone.polarity === 'SUPPORT'
+            ? 'rgba(0, 230, 118, 0.08)'
+            : 'rgba(255, 23, 68, 0.08)';
+        ctx.fillRect(0, top, w, height);
+
+        // Zone border lines
+        ctx.strokeStyle = zone.polarity === 'SUPPORT'
+            ? 'rgba(0, 230, 118, 0.35)'
+            : 'rgba(255, 23, 68, 0.35)';
+        ctx.lineWidth = 1;
+        ctx.setLineDash([4, 4]);
+        ctx.beginPath();
+        ctx.moveTo(0, top);    ctx.lineTo(w, top);
+        ctx.moveTo(0, bottom); ctx.lineTo(w, bottom);
+        ctx.stroke();
+        ctx.setLineDash([]);
+    });
+
+    // Draw leg formation lines and endpoint markers.
+    // Backend field names: timestamp_start / timestamp_end (not start_time/end_time).
+    (currentLegs || []).forEach(leg => {
+        if (!leg.timestamp_start || !leg.timestamp_end) return;
+
+        const startUnix = Math.floor(new Date(leg.timestamp_start).getTime() / 1000);
+        const endUnix   = Math.floor(new Date(leg.timestamp_end).getTime()   / 1000);
+
+        const x1 = chart.timeScale().timeToCoordinate(startUnix);
+        const x2 = chart.timeScale().timeToCoordinate(endUnix);
+        const y1 = chart.priceScale('right').priceToCoordinate(parseFloat(leg.start_price));
+        const y2 = chart.priceScale('right').priceToCoordinate(parseFloat(leg.end_price));
+
+        if (x1 == null || x2 == null || y1 == null || y2 == null) return;
+
+        const color = leg.direction === 'BULL' ? '#00e676' : '#ff1744';
+
+        // Connecting line
+        ctx.strokeStyle = color;
+        ctx.lineWidth = 2;
+        ctx.globalAlpha = 0.7;
+        ctx.beginPath();
+        ctx.moveTo(x1, y1);
+        ctx.lineTo(x2, y2);
+        ctx.stroke();
+
+        // Start circle (hollow)
+        ctx.globalAlpha = 0.9;
+        ctx.beginPath();
+        ctx.arc(x1, y1, 5, 0, Math.PI * 2);
+        ctx.strokeStyle = color;
+        ctx.lineWidth = 2;
+        ctx.stroke();
+
+        // End circle (filled)
+        ctx.beginPath();
+        ctx.arc(x2, y2, 5, 0, Math.PI * 2);
+        ctx.fillStyle = color;
+        ctx.fill();
+
+        ctx.globalAlpha = 1.0;
+    });
+}
+
+// =========================================================================
+// Poll loop
+// =========================================================================
+
+async function poll() {
+  try {
+    const [stRes, barsRes] = await Promise.all([
+      fetch(`${API_BASE}/api/state`),
+      fetch(`${API_BASE}/api/bars`),
+    ]);
+
+    if (!stRes.ok || !barsRes.ok) return;
+
+    const state = await stRes.json();
+    const bars  = await barsRes.json();
+
+    // Update all panels
+    renderHeader(state);
+    renderPhaseCard(state);
+    renderPhaseBars(state);
+    renderCandidates(state);
+    renderTrades(state);
+    renderZones(state.sr_zones || []);
+
+    // Update chart
+    renderCandles(bars);
+    renderBandLines(bars, state.zlbb_15m);
+    renderSRPriceLines(state.sr_zones || []);
+
+    // Update canvas overlay data and redraw.
+    // Called twice: once after setData() (chart has price range), once after
+    // zones/legs are updated (full repaint with fresh data).
+    currentZones = state.sr_zones    || [];
+    currentLegs  = state.recent_legs || [];
+    redrawCanvas();
+
+    // Flash cards on update
+    ['phase-card', 'bars-card', 'zones-card', 'cand-card'].forEach(flash);
+
+  } catch (err) {
+    console.warn('[poll] error:', err);
+  }
+}
+
+// =========================================================================
+// Boot
+// =========================================================================
+poll();
+setInterval(poll, POLL_MS);
+</script>
+</body>
+</html>

@@ -281,6 +281,14 @@ class StateManager:
         )
         self._pool: Optional[asyncpg.Pool] = None
 
+    @staticmethod
+    def _parse_jsonb(value) -> dict:
+        """Parse asyncpg JSONB column — returns str in real DB, dict in mocks."""
+        import json
+        if isinstance(value, str):
+            return json.loads(value)
+        return dict(value)
+
     # ------------------------------------------------------------------
     # Connection management
     # ------------------------------------------------------------------
@@ -382,7 +390,7 @@ class StateManager:
             )
         if row is None:
             return None
-        state_dict = dict(row["state_json"])
+        state_dict = self._parse_jsonb(row["state_json"])
         return state_dict
 
     async def verify_snapshot(
@@ -417,7 +425,7 @@ class StateManager:
             return False
 
         stored_hash = row["state_hash"]
-        state_dict  = dict(row["state_json"])
+        state_dict  = self._parse_jsonb(row["state_json"])
         recomputed  = _hash_state(state_dict)
 
         if recomputed != stored_hash:
@@ -555,11 +563,12 @@ class StateManager:
             await conn.execute(
                 """
                 INSERT INTO bars
-                    (instrument, timeframe, timestamp_start,
+                    (instrument, timeframe, timestamp_start, timestamp_end,
                      open, high, low, close, volume)
-                VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
                 ON CONFLICT (instrument, timeframe, timestamp_start)
                 DO UPDATE SET
+                    timestamp_end = EXCLUDED.timestamp_end,
                     open   = EXCLUDED.open,
                     high   = EXCLUDED.high,
                     low    = EXCLUDED.low,
@@ -569,6 +578,7 @@ class StateManager:
                 instrument,
                 bar.timeframe,
                 bar.timestamp_start,
+                bar.timestamp_end,
                 float(bar.open),
                 float(bar.high),
                 float(bar.low),
@@ -583,30 +593,37 @@ class StateManager:
         timeframe: str,
         after: Optional[datetime] = None,
         limit: int = 10_000,
+        newest_first: bool = False,
     ) -> list[dict]:
         """Doc 9 §5 step 1: Load bars in ascending timestamp order.
 
         Args:
-            instrument: Instrument symbol.
-            timeframe:  Bar timeframe label.
-            after:      Only return bars with timestamp_start > after (optional).
-            limit:      Maximum number of bars to return.
+            instrument:   Instrument symbol.
+            timeframe:    Bar timeframe label.
+            after:        Only return bars with timestamp_start > after (optional).
+            limit:        Maximum number of bars to return.
+            newest_first: When True, fetch the most-recent `limit` rows (DESC)
+                          then reverse before returning so caller always receives
+                          chronological (ASC) order.  Default False preserves
+                          existing behaviour (oldest-first ASC).
 
         Returns:
             List of dicts with keys: instrument, timeframe, timestamp_start,
             open, high, low, close, volume (all price fields as str Decimal).
+            Always returned in chronological (ascending) order.
         """
         self._require_pool()
+        order = "DESC" if newest_first else "ASC"
         if after is not None:
             async with self._pool.acquire() as conn:
                 rows = await conn.fetch(
-                    """
+                    f"""
                     SELECT instrument, timeframe, timestamp_start,
                            open, high, low, close, volume
                     FROM bars
                     WHERE instrument = $1 AND timeframe = $2
                       AND timestamp_start > $3
-                    ORDER BY timestamp_start ASC
+                    ORDER BY timestamp_start {order}
                     LIMIT $4
                     """,
                     instrument, timeframe, after, limit,
@@ -614,12 +631,12 @@ class StateManager:
         else:
             async with self._pool.acquire() as conn:
                 rows = await conn.fetch(
-                    """
+                    f"""
                     SELECT instrument, timeframe, timestamp_start,
                            open, high, low, close, volume
                     FROM bars
                     WHERE instrument = $1 AND timeframe = $2
-                    ORDER BY timestamp_start ASC
+                    ORDER BY timestamp_start {order}
                     LIMIT $3
                     """,
                     instrument, timeframe, limit,
@@ -637,6 +654,9 @@ class StateManager:
                 "close":           str(row["close"]),
                 "volume":          str(row["volume"]),
             })
+
+        if newest_first:
+            result.reverse()
         return result
 
     async def get_bar_count(self, instrument: str, timeframe: str) -> int:

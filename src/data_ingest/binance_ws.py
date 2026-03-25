@@ -12,7 +12,7 @@ import logging
 import sys
 from dataclasses import dataclass
 from decimal import Decimal
-from typing import AsyncIterator
+from typing import AsyncIterator, Awaitable, Callable
 
 import websockets
 
@@ -85,7 +85,9 @@ def _parse_kline_message(raw: dict) -> Bar | None:
     )
 
 
-async def stream_bars() -> AsyncIterator[Bar]:
+async def stream_bars(
+    on_reconnect: Callable[[], Awaitable[None]] | None = None,
+) -> AsyncIterator[Bar]:
     """Doc 2 §2: Yield closed 1m Bar objects from Binance WebSocket.
 
     Auto-reconnects with exponential backoff (1s → 2s → 4s → … → 60s max)
@@ -95,11 +97,21 @@ async def stream_bars() -> AsyncIterator[Bar]:
     for missing bars within an active session is handled downstream.
     This layer emits only what the exchange sends.
 
-    Usage:
-        async for bar in stream_bars():
-            process(bar)
+    Args:
+        on_reconnect: Optional async callback invoked after every reconnect
+            (NOT on the initial connect). Use this to backfill DB gaps that
+            accumulated during the disconnection window before resuming live
+            bar processing.  Example::
+
+                async def do_backfill():
+                    from backfill import run_backfill
+                    await run_backfill()
+
+                async for bar in stream_bars(on_reconnect=do_backfill):
+                    process(bar)
     """
     backoff_s = _BACKOFF_INITIAL_S
+    _first_connect = True  # suppress on_reconnect on the very first connection
 
     while True:
         try:
@@ -107,6 +119,11 @@ async def stream_bars() -> AsyncIterator[Bar]:
             async with websockets.connect(_WS_URL) as ws:
                 logger.info("Connected to Binance WebSocket.")
                 backoff_s = _BACKOFF_INITIAL_S  # reset on successful connect
+
+                if not _first_connect and on_reconnect is not None:
+                    logger.info("Reconnected after disconnect — running gap backfill.")
+                    await on_reconnect()
+                _first_connect = False
 
                 async for raw_message in ws:
                     try:

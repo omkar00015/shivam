@@ -10,7 +10,7 @@ services:
       POSTGRES_USER: prasad
       POSTGRES_PASSWORD: ${DB_PASSWORD:-dev_password_change_me}
     ports:
-      - "5432:5432"
+      - "15432:5432"
     volumes:
       - tsdb_data:/var/lib/postgresql/data
     healthcheck:

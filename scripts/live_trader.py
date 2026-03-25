@@ -323,6 +323,9 @@ async def main() -> None:
     aggregator = BarAggregator(symbol=_SYMBOL, is_continuous=True)
     btc_ctx    = orch.get_context(_SYMBOL)
 
+    # Standby notification counter — send once every 16 cycles (~4 hours)
+    standby_counter = 0
+
     # 7. Stream live 1m bars from Binance WebSocket
     logger.info("[OK] Connecting to Binance WebSocket (btcusdt@kline_1m) …")
 
@@ -378,6 +381,45 @@ async def main() -> None:
                 )
             else:
                 logger.info("[OK] No new signals this bar — pipeline clean")
+
+                # Send standby notification every 4 hours (16 cycles × 15m = 4h)
+                # to confirm system is alive in low-signal phases
+                standby_counter += 1
+                if standby_counter % 16 == 0:
+                    from collections import Counter
+                    zone_states: Counter[str] = Counter()
+                    zones = (
+                        btc_ctx.zone_detector.get_active_zones(min_tier="C")
+                        if hasattr(btc_ctx, "zone_detector")
+                        else []
+                    )
+                    for z in zones:
+                        zone_states[z.state.name] += 1
+                    state_summary = ", ".join(
+                        f"{k}:{v}" for k, v in sorted(zone_states.items())
+                    )
+                    eligible_states = {"FRESH", "TESTED", "FLIPPED"}
+                    eligible_count = sum(
+                        1 for z in zones if z.state.name in eligible_states
+                    )
+                    phase_name = result.phase.name
+                    setup_map = {
+                        "DISTRIBUTION": "Upthrust (SHORT fakeout at resistance)",
+                        "ACCUMULATION": "Spring (LONG fakeout at support)",
+                        "TREND_BULL": "Pullback Continuation (LONG at support)",
+                        "TREND_BEAR": "Pullback Continuation (SHORT at resistance)",
+                        "BALANCE": "Range Fade + Fakeout",
+                    }
+                    eligible_setup = setup_map.get(phase_name, "Multiple setups")
+                    asyncio.ensure_future(notifier.send_phase_standby(
+                        instrument=result.instrument,
+                        phase_name=phase_name,
+                        phase_confidence=result.phase_confidence,
+                        eligible_setup=eligible_setup,
+                        eligible_zone_count=eligible_count,
+                        total_zone_count=len(zones),
+                        zone_state_summary=state_summary or "no zones",
+                    ))
 
             # 11. Exit after the first completed bar (per user request)
             logger.info("=== First bar complete. Shutting down as requested. ===")
