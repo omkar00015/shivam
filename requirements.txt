@@ -11,6 +11,9 @@ apscheduler>=3.10
 python-telegram-bot>=21.0
 # Data
 requests>=2.31
+# API
+fastapi>=0.110.0
+uvicorn>=0.29.0
 # Config
 pyyaml>=6.0
 # Utilities
